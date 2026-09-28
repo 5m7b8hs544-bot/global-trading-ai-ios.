@@ -1,0 +1,1 @@
+{"expo":{"name":"GLOBAL TRADING AI","slug":"global-trading-ai","scheme":"globaltradingai","version":"0.1.0","orientation":"portrait","userInterfaceStyle":"dark","ios":{"supportsTablet":false,"bundleIdentifier":"com.globaltradingai.app"},"plugins":["expo-router"],"experiments":{"typedRoutes":true}}}
