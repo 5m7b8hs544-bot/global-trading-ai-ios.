@@ -1,1 +1,24 @@
-{"expo":{"name":"GLOBAL TRADING AI","slug":"global-trading-ai","scheme":"globaltradingai","version":"0.1.0","orientation":"portrait","userInterfaceStyle":"dark","ios":{"supportsTablet":false,"bundleIdentifier":"com.globaltradingai.app"},"plugins":["expo-router"],"experiments":{"typedRoutes":true}}}
+{
+  "expo": {
+    "name": "GLOBAL TRADING AI",
+    "slug": "global-trading1",
+    "owner": "trade75s-team",
+    "scheme": "globaltradingai",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.globaltradingai.app"
+    },
+    "plugins": ["expo-router"],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "extra": {
+      "eas": {
+        "projectId": "b825fdd9-3a89-4131-98e1-f6f2277407ae"
+      }
+    }
+  }
+}
