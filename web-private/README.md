@@ -1,4 +1,4 @@
-# GLOBAL TRADING AI — application privée v0.10 (mise à jour locale, publication en attente)
+# GLOBAL TRADING AI — application privée v0.10 (publiée sur Vercel)
 
 Application publiée sur https://global-trading-ai-prive.vercel.app/ avec authentification Vercel pour tous les déploiements.
 
@@ -21,7 +21,8 @@ La page Prévisions visible appelle le moteur chaque minute. Le ticker peut êtr
 `node tests/analysis.test.js` vérifie l’exclusion des bougies ouvertes, les OHLC, les données anciennes et manquantes, les agrégations de 4 heures et l’absence de probabilité inventée. Les valeurs de test ne sont jamais servies dans l’application.
 
 ## Déploiement
-Depuis dist : `npx vercel deploy --prod --scope global-edef`.
+Publication automatique depuis la branche `main`, dossier `web-private`, du dépôt GitHub connecté à Vercel. Framework Other, Node.js 24.x.
+Pour une publication CLI depuis ce dossier : `npx vercel deploy --prod --scope global-edef`.
 La route `/api/analyse` est une fonction Node Vercel ; elle nécessite cet hébergement et ne fonctionne pas comme simple fichier statique.
 Ne jamais inclure les fichiers .env ou .vercel dans une archive. Maintenir Vercel Authentication sur All Deployments.
 
