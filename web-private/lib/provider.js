@@ -33,26 +33,32 @@ function parseQuote(data,symbol,now=Date.now()){
  if(!Number.isFinite(price)||price<=0||!Number.isFinite(at)||now-at>120000||at>now+60000)throw new Error('Cotation trop ancienne ou non horodatée');
  return {price,time:new Date(at).toISOString()};
 }
-const cache=new Map();
-async function providerData(symbol,interval,env=process.env,request=fetch){
- const config=configuration(symbol,interval,env);if(!config.ready)throw new Error(config.reason);
+const {createHash}=require('node:crypto');
+const caches=new WeakMap();
+async function readProvider(config,env,request,endpoint,params,ttl){
+ let cache=caches.get(request);if(!cache){cache=new Map();caches.set(request,cache)}
  const common={symbol:config.instrument.symbol,...(config.instrument.exchange?{exchange:config.instrument.exchange}:{}),apikey:env.TWELVE_DATA_API_KEY};
- async function read(endpoint,params,ttl){
-  const key=endpoint+':'+symbol+':'+JSON.stringify(params),old=cache.get(key);if(old&&Date.now()-old.at<ttl)return old.data;
+ const key=createHash('sha256').update(JSON.stringify([common,endpoint,params])).digest('hex');
+ const old=cache.get(key);if(old&&Date.now()-old.at<ttl)return old.promise;
+ const entry={at:Date.now(),promise:(async()=>{
   const r=await request('https://api.twelvedata.com/'+endpoint+'?'+new URLSearchParams({...common,...params}),{signal:AbortSignal.timeout(9000)});
   if(!r.ok)throw new Error('Accès fournisseur refusé ou indisponible');
   const data=await r.json();if(data.status==='error')throw new Error('Données indisponibles : vérifier la clé, les droits du forfait et le symbole.');
-  cache.set(key,{at:Date.now(),data});return data;
- }
+  return data;
+ })()};
+ cache.set(key,entry);if(cache.size>128)cache.delete(cache.keys().next().value);
+ try{return await entry.promise}catch(error){if(cache.get(key)===entry)cache.delete(key);throw error}
+}
+async function providerData(symbol,interval,env=process.env,request=fetch){
+ const config=configuration(symbol,interval,env);if(!config.ready)throw new Error(config.reason);
+ const read=(endpoint,params,ttl)=>readProvider(config,env,request,endpoint,params,ttl);
  const hourTask=read('time_series',{interval:'1h',outputsize:'500',timezone:'UTC',order:'asc'},300000);
  const [data,hours,quote]=await Promise.all([config.interval==='1h'?hourTask:read('time_series',{interval:config.interval,outputsize:'500',timezone:'UTC',order:'asc'},300000),hourTask,read('quote',{interval:'1min',timezone:'UTC'},5000)]);
  return {rows:parseRows(data,symbol),hours:parseRows(hours,symbol),ticker:parseQuote(quote,symbol),source:'Twelve Data · '+config.instrument.label,sessionGaps:true};
 }
 async function providerQuote(symbol,env=process.env,request=fetch){
  const config=configuration(symbol,'1h',env);if(!config.ready)throw new Error(config.reason);
- const params=new URLSearchParams({symbol:config.instrument.symbol,...(config.instrument.exchange?{exchange:config.instrument.exchange}:{}),apikey:env.TWELVE_DATA_API_KEY,interval:'1min',timezone:'UTC'});
- const r=await request('https://api.twelvedata.com/quote?'+params,{signal:AbortSignal.timeout(7000)});
- if(!r.ok)throw new Error('Cotation fournisseur indisponible');
- return {...parseQuote(await r.json(),symbol),source:'Twelve Data · '+config.instrument.label};
+ const data=await readProvider(config,env,request,'quote',{interval:'1min',timezone:'UTC'},5000);
+ return {...parseQuote(data,symbol),source:'Twelve Data · '+config.instrument.label};
 }
 module.exports={configuration,parseRows,parseQuote,providerData,providerQuote};

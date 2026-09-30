@@ -1,6 +1,8 @@
 'use strict';
 const resolutions={'15m':'MINUTE_15','1h':'HOUR','4h':'HOUR_4'};
-let session=null;
+const {createHash}=require('node:crypto');
+const sessions=new Map();
+function sessionKey(config,env){return createHash('sha256').update(JSON.stringify([config.base,env.CAPITAL_API_KEY,env.CAPITAL_IDENTIFIER,env.CAPITAL_API_PASSWORD])).digest('hex')}
 function capitalConfig(interval,env=process.env){
  if(!resolutions[interval])return {ready:false,reason:'US100 : sélectionner 15m, 1h ou 4h ; calendrier journalier non validé.'};
  if(!env.CAPITAL_API_KEY||!env.CAPITAL_IDENTIFIER||!env.CAPITAL_API_PASSWORD)return {ready:false,reason:'US100 identifié : CFD US Tech 100 de Capital.com. Accès API Capital.com non configuré.'};
@@ -24,19 +26,34 @@ function capitalQuote(data,now=Date.now()){
  if(!Number.isFinite(at)||now-at>120000||at>now+60000)throw new Error('US100 : cours ancien');
  return {price:midpoint({bid:m.bid,ask:m.offer}),time:new Date(at).toISOString()};
 }
-async function capitalData(interval,env=process.env,request=fetch){
+async function capitalReader(interval,env,request){
  const config=capitalConfig(interval,env);if(!config.ready)throw new Error(config.reason);
- if(!session||session.base!==config.base||Date.now()-session.at>480000){
+ const key=sessionKey(config,env);
+ let pending=sessions.get(key);
+ if(!pending||Date.now()-pending.at>480000){
+  pending={at:Date.now(),value:(async()=>{
   const r=await request(config.base+'/api/v1/session',{method:'POST',headers:{'X-CAP-API-KEY':env.CAPITAL_API_KEY,'Content-Type':'application/json'},body:JSON.stringify({identifier:env.CAPITAL_IDENTIFIER,password:env.CAPITAL_API_PASSWORD,encryptedPassword:false}),signal:AbortSignal.timeout(9000)});
   const cst=r.headers.get('CST'),token=r.headers.get('X-SECURITY-TOKEN');if(!r.ok||!cst||!token)throw new Error('Connexion API Capital.com indisponible');
-  session={base:config.base,cst,token,at:Date.now()};
+  return {cst,token};
+  })()};
+  sessions.set(key,pending);
+  if(sessions.size>16)sessions.delete(sessions.keys().next().value);
  }
+ let session;try{session=await pending.value}catch(error){if(sessions.get(key)===pending)sessions.delete(key);throw error}
  async function read(path){
   const r=await request(config.base+'/api/v1/'+path,{headers:{CST:session.cst,'X-SECURITY-TOKEN':session.token},signal:AbortSignal.timeout(9000)});
-  if(r.status===401)session=null;if(!r.ok)throw new Error('Données Capital.com indisponibles');return r.json();
+  if(r.status===401&&sessions.get(key)===pending)sessions.delete(key);if(!r.ok)throw new Error('Données Capital.com indisponibles');return r.json();
  }
+ return {read,config};
+}
+async function capitalLatestQuote(env=process.env,request=fetch){
+ const {read,config}=await capitalReader('1h',env,request);
+ return {...capitalQuote(await read('markets?epics=US100')),source:'Capital.com '+config.mode+' · US100 CFD · milieu bid/ask'};
+}
+async function capitalData(interval,env=process.env,request=fetch){
+ const {read,config}=await capitalReader(interval,env,request);
  const hourTask=read('prices/US100?resolution=HOUR&max=500');
  const [rows,hours,market]=await Promise.all([config.resolution==='HOUR'?hourTask:read('prices/US100?resolution='+config.resolution+'&max=500'),hourTask,read('markets?epics=US100')]);
  return {rows:capitalRows(rows),hours:capitalRows(hours),ticker:capitalQuote(market),source:'Capital.com '+config.mode+' · US100 CFD · milieu bid/ask',sessionGaps:true};
 }
-module.exports={capitalConfig,capitalRows,capitalQuote,capitalData};
+module.exports={capitalConfig,capitalRows,capitalQuote,capitalData,capitalLatestQuote};
