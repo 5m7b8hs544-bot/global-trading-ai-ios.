@@ -6,7 +6,7 @@ const env={MARKET_DATA_PROVIDER:'ctrader',CTRADER_CLIENT_ID:'fixture',CTRADER_CL
 const config=ctraderConfig('XAU/USD','1h',env);
 test('configuration sans substitution et aucun réseau sans autorisation',async()=>{
  assert.equal(config.ready,true);assert.equal(config.url,'wss://demo.ctraderapi.com:5036');
- assert.equal(ctraderConfig('AAPL','1h',env).ready,false);assert.equal(connectionConfig('XAU/USD','1h',env).provider,'cTrader · autorisation requise');
+ assert.equal(ctraderConfig('AAPL','1h',env).ready,false);assert.equal(connectionConfig('XAU/USD','1h',env).provider,'cTrader Open API');
  assert.equal(connectionSummary({}).filter(c=>c.status==='authorization_required').length,5);
  await assert.rejects(ctraderData('XAU/USD','1h',{}),/non autorisé/);
  assert.equal(ctraderConfig('XAU/USD','1h',{...env,CTRADER_ENV:'invalid'}).ready,false);
