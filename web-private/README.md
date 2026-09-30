@@ -98,3 +98,18 @@ L’endpoint /api/connexions distingue configuration et connexion vérifiée, sa
 Les publications répétées de même URL/date sont dédoublonnées. Les fenêtres qui se chevauchent avec une autre publication reçue sont signalées et exclues de la médiane des écarts hors chevauchement. Synthèse par horizon +1h/+4h et par thème : taille d’échantillon, médiane, bornes observées. L’écart à la référence est en points de pourcentage. Normalisation interne par volatilité des 24 rendements antérieurs, sans regard futur. La synthèse reste descriptive : pas d’effet causal, pas de coefficient injecté dans la projection, pas de position parfaite. Une publication hors couverture peut encore contaminer une fenêtre dite sans chevauchement.
 
 Validation : node --test tests/*.test.js. Tests de protocole cTrader sur fixtures, OHLC et échelle, bid/ask séparés, absence d’accès sans configuration, refus des ordres, erreurs et fenêtres d’actualité. Ces tests ne prouvent pas l’accès réel du courtier.
+
+## Correctif 0.10.1 — 30 septembre 2026
+
+- Test manuel d'une cotation récente dans Paramètres, distinct de la validation de l'historique.
+- Cotations US100 sans téléchargement de 500 bougies à chaque rafraîchissement.
+- Sessions Capital.com isolées par identifiants, requêtes d'authentification concurrentes regroupées et invalidation après 401.
+- Cache Twelve Data isolé par clé, requêtes concurrentes regroupées ; les erreurs ne sont pas conservées.
+- Changement de marché : le rafraîchissement n'attend plus le délai du marché précédent.
+- 32 tests locaux réussis. Les tests de fournisseurs utilisent des données de contrôle, pas des comptes réels.
+
+### Travail restant nécessitant un accès externe
+
+Les cinq accès de données hors Bitcoin ne sont pas configurés. La présence d'un compte MT5 sur iPhone ne fournit pas automatiquement une API à cette application. Il faut un flux autorisé de cotations et d'historique pour chaque instrument ; aucune équivalence entre US100 CFD et ETF/indice n'est présumée. Aucune souscription n'est effectuée par le code.
+
+Le calcul des variations après publication est descriptif. Un effet causal des actualités et une stratégie de placement fiable ne sont pas validés. Le moteur ne promet pas une position parfaite et n'exécute aucun ordre.

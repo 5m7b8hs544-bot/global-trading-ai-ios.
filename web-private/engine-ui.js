@@ -100,16 +100,26 @@ function syncLiveStream(){
  socket.onerror=()=>socket.close();
  socket.onclose=()=>{if(liveSocket!==socket)return;liveSocket=null;streamState='Flux interrompu · reconnexion automatique';streamRetryAt=Date.now()+Math.min(30000,1000*2**Math.min(streamAttempts++,5));paintLiveQuote()};
 }
-let quotePollPending=false,lastQuotePoll=0;
+let quotePollPending=false,lastQuotePoll=0,lastPolledSymbol=null;
 let configuredQuotes=new Set(['BTC/USD']);
 async function loadConnections(){
- try{const r=await fetch('/api/connexions',{cache:'no-store'});if(!r.ok)return;const d=await r.json();configuredQuotes=new Set(d.connections.filter(c=>c.status==='public'||c.status==='configured_unverified').map(c=>c.symbol));const host=document.querySelector('#connections');if(host)host.innerHTML='<h2>Connexions du moteur</h2>'+d.connections.map(c=>`<article class="conditional-plan"><h3>${escapeHtml(c.symbol)}</h3><p>${escapeHtml(c.provider)}</p><p class="help">${c.status==='public'?'Accès public · disponibilité vérifiée à chaque calcul':c.status==='configured_unverified'?'Configurée · flux à vérifier':'Autorisation manquante'}<br>${escapeHtml(c.reason)}</p></article>`).join('')+'<p class="help">Fusion : un compte cTrader et une autorisation de lecture sont nécessaires. Un compte MT5 sur iPhone ne fournit pas cet accès. Les cours et contrats peuvent différer de ton compte MT5.</p>'}catch{const host=document.querySelector('#connections');if(host)host.innerHTML='<p>État des connexions indisponible.</p>'}
+ const host=document.querySelector('#connections');
+ try{
+  const r=await fetch('/api/connexions',{cache:'no-store'});if(!r.ok)throw new Error();
+  const d=await r.json();configuredQuotes=new Set(d.connections.filter(c=>c.status==='public'||c.status==='configured_unverified').map(c=>c.symbol));
+  if(!host)return;
+  host.innerHTML='<h2>Connexions du moteur</h2><p class="help">Un graphique visible ne signifie pas que le moteur reçoit ses données. Le test ci-dessous vérifie une cotation récente ; l’historique est contrôlé lors de l’analyse.</p>'+d.connections.map((c,i)=>`<article class="conditional-plan"><h3>${escapeHtml(c.symbol)}</h3><p>${escapeHtml(c.provider)}</p><p class="help">${c.status==='public'?'Accès public sans clé':c.status==='configured_unverified'?'Configurée · à tester':'Données non connectées'}<br>${escapeHtml(c.reason)}</p>${configuredQuotes.has(c.symbol)?`<button type="button" data-verify="${i}">Tester le cours</button>`:''}<p class="help" id="connection-check-${i}" role="status"></p></article>`).join('')+'<p class="help">Les comptes de trading et les accès aux données du moteur sont distincts. Aucun abonnement n’est souscrit par cette application. Les marchés non connectés restent sans projection calculée.</p>';
+  host.querySelectorAll('[data-verify]').forEach(button=>button.addEventListener('click',async()=>{
+   const i=Number(button.dataset.verify),symbol=d.connections[i].symbol,result=host.querySelector('#connection-check-'+i);button.disabled=true;result.textContent='Vérification…';
+   try{const response=await fetch('/api/cours?'+new URLSearchParams({symbol}),{cache:'no-store',signal:AbortSignal.timeout(15000)});const q=await response.json();const at=Date.parse(q.priceAt),price=Number(q.price);if(!response.ok||q.symbol!==symbol||!Number.isFinite(price)||price<=0||!Number.isFinite(at)||Date.now()-at>120000||at>Date.now()+60000)throw new Error();result.textContent='Cours vérifié : '+priceFormat(price)+' USD · '+parisTime(q.priceAt)+'. Ce test ne valide pas encore l’historique ni les prévisions.'}catch{result.textContent='Aucun cours récent vérifié. Le marché peut être fermé, le fournisseur indisponible ou les droits insuffisants.'}finally{button.disabled=false}
+  }));
+ }catch{if(host)host.innerHTML='<p>État des connexions indisponible. Réouvre cet onglet pour réessayer.</p>'}
 }
 async function pollLiveQuote(){
  if(quotePollPending||document.hidden||!document.querySelector('#live-market')||!configuredQuotes.has(selected))return;
  if(selected==='BTC/USD'&&liveSocket&&streamState.startsWith('● Flux direct connecté')&&Date.now()-lastStreamMessage<20000)return;
  const symbol=selected;const gap=symbol==='BTC/USD'||latestDashboard?.technical?.source?.startsWith('cTrader')?5000:60000;
- if(Date.now()-lastQuotePoll<gap)return;lastQuotePoll=Date.now();quotePollPending=true;
+ if(lastPolledSymbol===symbol&&Date.now()-lastQuotePoll<gap)return;lastPolledSymbol=symbol;lastQuotePoll=Date.now();quotePollPending=true;
  try{
   const response=await fetch('/api/cours?'+new URLSearchParams({symbol}),{cache:'no-store',signal:AbortSignal.timeout(8000)});
   if(!response.ok)return;const quote=await response.json();
