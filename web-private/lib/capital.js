@@ -2,6 +2,23 @@
 const resolutions={'15m':'MINUTE_15','1h':'HOUR','4h':'HOUR_4'};
 const {createHash}=require('node:crypto');
 const sessions=new Map();
+class CapitalAccessError extends Error {}
+async function accessError(response,mode,stage){
+ let code='';try{code=(await response.json()).errorCode}catch{}
+ const known={
+ 'error.invalid.api.key':'clé API refusée',
+ 'error.invalid.details':'identifiant ou mot de passe API refusé',
+ 'error.invalid.password':'mot de passe API refusé',
+ 'error.security.invalid-details':'identifiant ou mot de passe API refusé',
+ 'error.security.api-key-invalid':'clé API refusée',
+ 'error.security.api-key-disabled':'clé API désactivée',
+ 'error.security.api-key-expired':'clé API expirée',
+ 'error.too-many.requests':'trop de requêtes, réessayer plus tard'
+ };
+ const status=Number.isInteger(response.status)?response.status:0;
+ return new CapitalAccessError('Capital.com '+mode+' : '+stage+' — '+(known[code]||('accès indisponible (HTTP '+status+')'))+'.');
+}
+
 function sessionKey(config,env){return createHash('sha256').update(JSON.stringify([config.base,env.CAPITAL_API_KEY,env.CAPITAL_IDENTIFIER,env.CAPITAL_API_PASSWORD])).digest('hex')}
 function capitalConfig(interval,env=process.env){
  if(!resolutions[interval])return {ready:false,reason:'US100 : sélectionner 15m, 1h ou 4h ; calendrier journalier non validé.'};
@@ -20,7 +37,7 @@ function capitalRows(data){
 }
 function capitalQuote(data,now=Date.now()){
  const m=data?.markets?.find(m=>m.epic==='US100');if(!m||m.instrumentType!=='INDICES')throw new Error('Contrat exact US100 absent');
- if(m.marketStatus!=='TRADEABLE'||m.delayTime!==0)throw new Error('US100 fermé ou données différées');
+ if(m.marketStatus!=='TRADEABLE'||m.delayTime!==0)throw new CapitalAccessError('Capital.com : marché US100 fermé ou données différées ; aucun scénario courant.');
  const raw=m.updateTimeUTC;if(typeof raw!=='string'||!/^\d{4}-\d{2}-\d{2}T/.test(raw))throw new Error('Timestamp US100 absent');
  const at=Date.parse(raw.endsWith('Z')?raw:raw+'Z');
  if(!Number.isFinite(at)||now-at>120000||at>now+60000)throw new Error('US100 : cours ancien');
@@ -33,7 +50,7 @@ async function capitalReader(interval,env,request){
  if(!pending||Date.now()-pending.at>480000){
   pending={at:Date.now(),value:(async()=>{
   const r=await request(config.base+'/api/v1/session',{method:'POST',headers:{'X-CAP-API-KEY':env.CAPITAL_API_KEY,'Content-Type':'application/json'},body:JSON.stringify({identifier:env.CAPITAL_IDENTIFIER,password:env.CAPITAL_API_PASSWORD,encryptedPassword:false}),signal:AbortSignal.timeout(9000)});
-  const cst=r.headers.get('CST'),token=r.headers.get('X-SECURITY-TOKEN');if(!r.ok||!cst||!token)throw new Error('Connexion API Capital.com indisponible');
+  const cst=r.headers.get('CST'),token=r.headers.get('X-SECURITY-TOKEN');if(!r.ok)throw await accessError(r,config.mode,'connexion');if(!cst||!token)throw new CapitalAccessError('Capital.com : réponse de connexion incomplète.');
   return {cst,token};
   })()};
   sessions.set(key,pending);
@@ -42,7 +59,7 @@ async function capitalReader(interval,env,request){
  let session;try{session=await pending.value}catch(error){if(sessions.get(key)===pending)sessions.delete(key);throw error}
  async function read(path){
   const r=await request(config.base+'/api/v1/'+path,{headers:{CST:session.cst,'X-SECURITY-TOKEN':session.token},signal:AbortSignal.timeout(9000)});
-  if(r.status===401&&sessions.get(key)===pending)sessions.delete(key);if(!r.ok)throw new Error('Données Capital.com indisponibles');return r.json();
+  if(r.status===401&&sessions.get(key)===pending)sessions.delete(key);if(!r.ok)throw await accessError(r,config.mode,'lecture des prix');return r.json();
  }
  return {read,config};
 }
@@ -56,4 +73,4 @@ async function capitalData(interval,env=process.env,request=fetch){
  const [rows,hours,market]=await Promise.all([config.resolution==='HOUR'?hourTask:read('prices/US100?resolution='+config.resolution+'&max=500'),hourTask,read('markets?epics=US100')]);
  return {rows:capitalRows(rows),hours:capitalRows(hours),ticker:capitalQuote(market),source:'Capital.com '+config.mode+' · US100 CFD · milieu bid/ask',sessionGaps:true};
 }
-module.exports={capitalConfig,capitalRows,capitalQuote,capitalData,capitalLatestQuote};
+module.exports={CapitalAccessError,capitalConfig,capitalRows,capitalQuote,capitalData,capitalLatestQuote};
