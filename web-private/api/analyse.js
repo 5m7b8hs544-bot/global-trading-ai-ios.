@@ -1,4 +1,5 @@
 'use strict';
+const {CapitalAccessError}=require('../lib/capital');
 const {seconds,normalize,aggregate4h,analyse}=require('../lib/analysis');
 const {parseFeed}=require('../lib/news');
 const {project,projectSessions}=require('../lib/forecast');
@@ -61,7 +62,7 @@ module.exports=async function(req,res){
    eventCandles=normalize(raw.hours,3600,now);
    technical={...analyse(normalize(raw.rows,seconds[interval],now),raw.ticker,interval,now,{sessionGaps:true}),source:raw.source};
    try{forecast=projectSessions(eventCandles,Number(raw.ticker.price),now)}catch(e){forecastReason='Projection non calculée : '+e.message}
-  }catch(e){reason=['Marché fermé : pas de scénario courant','Cotation trop ancienne ou non horodatée','Cotation fournisseur incohérente','Réponse fournisseur incohérente'].includes(e.message)?e.message:'Données fournisseur indisponibles : vérifier les droits d’accès et la qualité du flux.'}
+  }catch(e){reason=e instanceof CapitalAccessError?e.message:['Marché fermé : pas de scénario courant','Cotation trop ancienne ou non horodatée','Cotation fournisseur incohérente','Réponse fournisseur incohérente'].includes(e.message)?e.message:'Données fournisseur indisponibles : vérifier les droits d’accès et la qualité du flux.'}
  }
  else try{
   const step=interval==='4h'?3600:seconds[interval];
