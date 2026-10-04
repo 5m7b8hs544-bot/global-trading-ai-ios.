@@ -26,24 +26,26 @@ function capitalConfig(interval,env=process.env){
  if(env.CAPITAL_API_ENV&&!['demo','live'].includes(env.CAPITAL_API_ENV))return {ready:false,reason:'Environnement Capital.com invalide.'};
  return {ready:true,base:env.CAPITAL_API_ENV==='live'?'https://api-capital.backend-capital.com':'https://demo-api-capital.backend-capital.com',mode:env.CAPITAL_API_ENV==='live'?'réel':'démo',resolution:resolutions[interval]};
 }
-function midpoint(p){const bid=Number(p?.bid),ask=Number(p?.ask);if(!Number.isFinite(bid)||!Number.isFinite(ask)||bid<=0||ask<bid)throw new Error('Bid/ask Capital.com incohérent');return (bid+ask)/2}
+function midpoint(p){const bid=Number(p?.bid),ask=Number(p?.ask);if(!Number.isFinite(bid)||!Number.isFinite(ask)||bid<=0||ask<bid)throw new CapitalAccessError('Bid/ask Capital.com incohérent');return (bid+ask)/2}
 function capitalRows(data){
- if(!Array.isArray(data?.prices))throw new Error('Historique Capital.com absent');
+ if(!Array.isArray(data?.prices))throw new CapitalAccessError('Historique Capital.com absent');
  return data.prices.map(c=>{
-  if(!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z?$/.test(c.snapshotTimeUTC||''))throw new Error('Horodatage Capital.com absent');
+  if(!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z?$/.test(c.snapshotTimeUTC||''))throw new CapitalAccessError('Horodatage Capital.com absent');
   const time=Date.parse(c.snapshotTimeUTC.endsWith('Z')?c.snapshotTimeUTC:c.snapshotTimeUTC+'Z')/1000;
   return [time,midpoint(c.lowPrice),midpoint(c.highPrice),midpoint(c.openPrice),midpoint(c.closePrice)];
  });
 }
 function capitalQuote(data,now=Date.now()){
- const m=data?.markets?.find(m=>m.epic==='US100');if(!m||m.instrumentType!=='INDICES')throw new Error('Contrat exact US100 absent');
+ const m=data?.markets?.find(m=>m.epic==='US100');if(!m||m.instrumentType!=='INDICES')throw new CapitalAccessError('Contrat exact US100 absent');
  if(m.marketStatus!=='TRADEABLE'||m.delayTime!==0)throw new CapitalAccessError('Capital.com : marché US100 fermé ou données différées ; aucun scénario courant.');
- const raw=m.updateTimeUTC;if(typeof raw!=='string'||!/^\d{4}-\d{2}-\d{2}T/.test(raw))throw new Error('Timestamp US100 absent');
+ const raw=m.updateTimeUTC;if(typeof raw!=='string'||!/^\d{4}-\d{2}-\d{2}T/.test(raw))throw new CapitalAccessError('Timestamp US100 absent');
  const at=Date.parse(raw.endsWith('Z')?raw:raw+'Z');
- if(!Number.isFinite(at)||now-at>120000||at>now+60000)throw new Error('US100 : cours ancien');
+ if(!Number.isFinite(at)||now-at>120000||at>now+60000)throw new CapitalAccessError('US100 : cours ancien');
  return {price:midpoint({bid:m.bid,ask:m.offer}),time:new Date(at).toISOString()};
 }
 async function capitalReader(interval,env,request){
+ const transport=request;
+ request=async(url,options)=>{try{return await transport(url,options)}catch{throw new CapitalAccessError('Capital.com : '+(url.endsWith('/session')?'connexion':'lecture des données')+' — serveur injoignable ou délai dépassé.')}};
  const config=capitalConfig(interval,env);if(!config.ready)throw new Error(config.reason);
  const key=sessionKey(config,env);
  let pending=sessions.get(key);
