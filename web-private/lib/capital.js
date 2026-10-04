@@ -2,6 +2,8 @@
 const resolutions={'15m':'MINUTE_15','1h':'HOUR','4h':'HOUR_4'};
 const {createHash}=require('node:crypto');
 const sessions=new Map();
+const contracts=Object.freeze({'US100':{epic:'US100',type:'INDICES'},'XAU/USD':{epic:'GOLD',type:'COMMODITIES'},'EUR/USD':{epic:'EURUSD',type:'CURRENCIES'},'WTI':{epic:'OIL_CRUDE',type:'COMMODITIES'},'AAPL':{epic:'AAPL',type:'SHARES'}});
+function contract(symbol){const c=contracts[symbol];if(!c)throw new CapitalAccessError('Instrument Capital.com non pris en charge.');return c}
 class CapitalAccessError extends Error {}
 async function accessError(response,mode,stage){
  let code='';try{code=(await response.json()).errorCode}catch{}
@@ -20,9 +22,10 @@ async function accessError(response,mode,stage){
 }
 
 function sessionKey(config,env){return createHash('sha256').update(JSON.stringify([config.base,env.CAPITAL_API_KEY,env.CAPITAL_IDENTIFIER,env.CAPITAL_API_PASSWORD])).digest('hex')}
-function capitalConfig(interval,env=process.env){
- if(!resolutions[interval])return {ready:false,reason:'US100 : sélectionner 15m, 1h ou 4h ; calendrier journalier non validé.'};
- if(!env.CAPITAL_API_KEY||!env.CAPITAL_IDENTIFIER||!env.CAPITAL_API_PASSWORD)return {ready:false,reason:'US100 identifié : CFD US Tech 100 de Capital.com. Accès API Capital.com non configuré.'};
+function capitalConfig(interval,env=process.env,symbol='US100'){
+ if(!contracts[symbol])return {ready:false,reason:'Instrument Capital.com non pris en charge.'};
+ if(!resolutions[interval])return {ready:false,reason:'Capital.com : sélectionner 15m, 1h ou 4h ; calendrier journalier non validé.'};
+ if(!env.CAPITAL_API_KEY||!env.CAPITAL_IDENTIFIER||!env.CAPITAL_API_PASSWORD)return {ready:false,reason:'Accès API Capital.com non configuré.'};
  if(env.CAPITAL_API_ENV&&!['demo','live'].includes(env.CAPITAL_API_ENV))return {ready:false,reason:'Environnement Capital.com invalide.'};
  return {ready:true,base:env.CAPITAL_API_ENV==='live'?'https://api-capital.backend-capital.com':'https://demo-api-capital.backend-capital.com',mode:env.CAPITAL_API_ENV==='live'?'réel':'démo',resolution:resolutions[interval]};
 }
@@ -35,12 +38,15 @@ function capitalRows(data){
   return [time,midpoint(c.lowPrice),midpoint(c.highPrice),midpoint(c.openPrice),midpoint(c.closePrice)];
  });
 }
-function capitalQuote(data,now=Date.now()){
- const m=data?.instrument&&data?.snapshot?{...data.snapshot,epic:data.instrument.epic,instrumentType:data.instrument.type}:data?.markets?.find(m=>m.epic==='US100');if(!m||m.epic!=='US100'||m.instrumentType!=='INDICES')throw new CapitalAccessError('Contrat exact US100 absent');
- if(m.marketStatus!=='TRADEABLE'||m.delayTime!==0)throw new CapitalAccessError('Capital.com : marché US100 fermé ou données différées ; aucun scénario courant.');
- const raw=m.updateTimeUTC;if(typeof raw!=='string'||!/^\d{4}-\d{2}-\d{2}T/.test(raw))throw new CapitalAccessError('Timestamp US100 absent');
+function capitalQuote(data,now=Date.now(),symbol='US100'){
+ const expected=contract(symbol);
+ const m=data?.instrument&&data?.snapshot?{...data.snapshot,epic:data.instrument.epic,instrumentType:data.instrument.type}:data?.markets?.find(m=>m.epic===expected.epic);if(!m||m.epic!==expected.epic||m.instrumentType!==expected.type)throw new CapitalAccessError('Capital.com : contrat exact '+symbol+' absent ou type incohérent.');
+ if(data.instrument&&data.instrument.currency!=='USD')throw new CapitalAccessError('Capital.com : devise du contrat non validée en USD.');
+ if(m.marketStatus!=='TRADEABLE')throw new CapitalAccessError('Capital.com connecté · '+symbol+' : marché fermé ou non négociable ; aucun scénario courant.');
+ if(m.delayTime!==0)throw new CapitalAccessError('Capital.com connecté · '+symbol+' : données différées ou délai non renseigné ; aucun scénario courant.');
+ const raw=m.updateTimeUTC;if(typeof raw!=='string'||!/^\d{4}-\d{2}-\d{2}T/.test(raw))throw new CapitalAccessError('Horodatage Capital.com absent');
  const at=Date.parse(raw.endsWith('Z')?raw:raw+'Z');
- if(!Number.isFinite(at)||now-at>120000||at>now+60000)throw new CapitalAccessError('US100 : cours ancien');
+ if(!Number.isFinite(at)||now-at>120000||at>now+60000)throw new CapitalAccessError('Capital.com : cours ancien');
  return {price:midpoint({bid:m.bid,ask:m.offer}),time:new Date(at).toISOString()};
 }
 async function capitalReader(interval,env,request){
@@ -65,14 +71,16 @@ async function capitalReader(interval,env,request){
  }
  return {read,config};
 }
-async function capitalLatestQuote(env=process.env,request=fetch){
+async function capitalLatestQuote(env=process.env,request=fetch,symbol='US100'){
+ const c=contract(symbol);
  const {read,config}=await capitalReader('1h',env,request);
- return {...capitalQuote(await read('markets/US100')),source:'Capital.com '+config.mode+' · US100 CFD · milieu bid/ask'};
+ return {...capitalQuote(await read('markets/'+c.epic),Date.now(),symbol),source:'Capital.com '+config.mode+' · '+c.epic+' CFD · milieu bid/ask'};
 }
-async function capitalData(interval,env=process.env,request=fetch){
+async function capitalData(interval,env=process.env,request=fetch,symbol='US100'){
+ const c=contract(symbol);
  const {read,config}=await capitalReader(interval,env,request);
- const hourTask=read('prices/US100?resolution=HOUR&max=500');
- const [rows,hours,market]=await Promise.all([config.resolution==='HOUR'?hourTask:read('prices/US100?resolution='+config.resolution+'&max=500'),hourTask,read('markets/US100')]);
- return {rows:capitalRows(rows),hours:capitalRows(hours),ticker:capitalQuote(market),source:'Capital.com '+config.mode+' · US100 CFD · milieu bid/ask',sessionGaps:true};
+ const hourTask=read('prices/'+c.epic+'?resolution=HOUR&max=500');
+ const [rows,hours,market]=await Promise.all([config.resolution==='HOUR'?hourTask:read('prices/'+c.epic+'?resolution='+config.resolution+'&max=500'),hourTask,read('markets/'+c.epic)]);
+ return {rows:capitalRows(rows),hours:capitalRows(hours),ticker:capitalQuote(market,Date.now(),symbol),source:'Capital.com '+config.mode+' · '+c.epic+' CFD · milieu bid/ask',sessionGaps:true};
 }
-module.exports={CapitalAccessError,capitalConfig,capitalRows,capitalQuote,capitalData,capitalLatestQuote};
+module.exports={contracts,CapitalAccessError,capitalConfig,capitalRows,capitalQuote,capitalData,capitalLatestQuote};
