@@ -18,3 +18,12 @@ test('bloque les historiques insuffisants et discontinus',()=>{
  assert.throws(()=>project(candles.slice(-180),1300,now),/181/);
  const changed=candles.map(c=>({...c}));changed.at(-10).time+=60;assert.throws(()=>project(changed,1300,now),/incomplet/);
 });
+
+test('rejects open or future candles for both forecast engines',()=>{
+ const {projectSessions}=require('../lib/forecast');
+ for(const engine of [project,projectSessions]){
+  const future=candles.map(c=>({...c,time:c.time+3600}));
+  assert.throws(()=>engine(future,1300,now),/clôturées/);
+  assert.throws(()=>engine(candles,1300,NaN),/Historique invalide/);
+ }
+});
