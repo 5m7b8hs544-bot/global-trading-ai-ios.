@@ -38,6 +38,33 @@ function capitalRows(data){
   return [time,...['lowPrice','highPrice','openPrice','closePrice'].map(field=>{try{return midpoint(c[field])}catch{const p=c[field],bid=Number(p?.bid),ask=Number(p?.ask);const reason=!p||p.bid==null||p.ask==null?'prix manquant':!Number.isFinite(bid)||!Number.isFinite(ask)?'prix non numérique':bid<=0||ask<=0?'prix nul ou négatif':'ask inférieur au bid';throw new CapitalAccessError('Historique Capital.com : '+field+' — '+reason+' ('+new Date(time*1000).toISOString()+').')}})];
  });
 }
+// Keep only the valid suffix after the last corrupt candle. Never bridge a
+// discarded observation, interpolate prices, or change the bid/ask spread.
+function capitalHistory(data){
+ if(!Array.isArray(data?.prices)||!data.prices.length)throw new CapitalAccessError('Historique Capital.com absent');
+ const ordered=data.prices.map(c=>{
+  const raw=c.snapshotTimeUTC;
+  if(typeof raw!=='string'||!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z?$/.test(raw))throw new CapitalAccessError('Horodatage Capital.com absent');
+  const time=Date.parse(raw.endsWith('Z')?raw:raw+'Z');
+  if(!Number.isFinite(time))throw new CapitalAccessError('Horodatage Capital.com invalide');
+  return {c,time};
+ }).sort((a,b)=>a.time-b.time);
+ let rows=[],discarded=0,invalid=0;
+ for(let i=0;i<ordered.length;i++){
+  if(i&&ordered[i].time===ordered[i-1].time)throw new CapitalAccessError('Historique Capital.com : horodatage dupliqué');
+  try{
+   const row=capitalRows({prices:[ordered[i].c]})[0];
+   const [,low,high,open,close]=row;
+   if(low>high||open<low||open>high||close<low||close>high)throw new CapitalAccessError('OHLC Capital.com incohérent');
+   rows.push(row);
+  }catch(error){
+   if(!(error instanceof CapitalAccessError))throw error;
+   rows=[];discarded=i+1;invalid++;
+  }
+ }
+ if(!rows.length)throw new CapitalAccessError('Historique Capital.com : dernière bougie invalide ; calcul bloqué.');
+ return {rows,discarded,invalid};
+}
 function capitalQuote(data,now=Date.now(),symbol='US100'){
  const expected=contract(symbol);
  const m=data?.instrument&&data?.snapshot?{...data.snapshot,epic:data.instrument.epic,instrumentType:data.instrument.type}:data?.markets?.find(m=>m.epic===expected.epic);if(!m||m.epic!==expected.epic||m.instrumentType!==expected.type)throw new CapitalAccessError('Capital.com : contrat exact '+symbol+' absent ou type incohérent.');
@@ -81,6 +108,9 @@ async function capitalData(interval,env=process.env,request=fetch,symbol='US100'
  const {read,config}=await capitalReader(interval,env,request);
  const hourTask=read('prices/'+c.epic+'?resolution=HOUR&max=500');
  const [rows,hours,market]=await Promise.all([config.resolution==='HOUR'?hourTask:read('prices/'+c.epic+'?resolution='+config.resolution+'&max=500'),hourTask,read('markets/'+c.epic)]);
- return {rows:capitalRows(rows),hours:capitalRows(hours),ticker:capitalQuote(market,Date.now(),symbol),source:'Capital.com '+config.mode+' · '+c.epic+' CFD · milieu bid/ask',sessionGaps:true};
+ const selected=capitalHistory(rows),hourly=rows===hours?selected:capitalHistory(hours);
+ const quality='Historique validé : '+hourly.rows.length+' bougies horaires'+(hourly.discarded?' ; '+hourly.discarded+' bougies écartées jusqu’à la dernière anomalie':'')+'.';
+ let ticker;try{ticker=capitalQuote(market,Date.now(),symbol)}catch(error){if(error instanceof CapitalAccessError)throw new CapitalAccessError(error.message+' '+quality);throw error}
+ return {rows:selected.rows,hours:hourly.rows,ticker,source:'Capital.com '+config.mode+' · '+c.epic+' CFD · milieu bid/ask'+(selected.discarded||hourly.discarded?' · historique tronqué après anomalie ('+selected.discarded+' / '+hourly.discarded+' bougies écartées)':''),sessionGaps:true};
 }
-module.exports={contracts,CapitalAccessError,capitalConfig,capitalRows,capitalQuote,capitalData,capitalLatestQuote};
+module.exports={contracts,CapitalAccessError,capitalConfig,capitalRows,capitalHistory,capitalQuote,capitalData,capitalLatestQuote};
