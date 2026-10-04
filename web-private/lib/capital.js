@@ -36,7 +36,7 @@ function capitalRows(data){
  });
 }
 function capitalQuote(data,now=Date.now()){
- const m=data?.markets?.find(m=>m.epic==='US100');if(!m||m.instrumentType!=='INDICES')throw new CapitalAccessError('Contrat exact US100 absent');
+ const m=data?.instrument&&data?.snapshot?{...data.snapshot,epic:data.instrument.epic,instrumentType:data.instrument.type}:data?.markets?.find(m=>m.epic==='US100');if(!m||m.epic!=='US100'||m.instrumentType!=='INDICES')throw new CapitalAccessError('Contrat exact US100 absent');
  if(m.marketStatus!=='TRADEABLE'||m.delayTime!==0)throw new CapitalAccessError('Capital.com : marché US100 fermé ou données différées ; aucun scénario courant.');
  const raw=m.updateTimeUTC;if(typeof raw!=='string'||!/^\d{4}-\d{2}-\d{2}T/.test(raw))throw new CapitalAccessError('Timestamp US100 absent');
  const at=Date.parse(raw.endsWith('Z')?raw:raw+'Z');
@@ -67,12 +67,12 @@ async function capitalReader(interval,env,request){
 }
 async function capitalLatestQuote(env=process.env,request=fetch){
  const {read,config}=await capitalReader('1h',env,request);
- return {...capitalQuote(await read('markets?epics=US100')),source:'Capital.com '+config.mode+' · US100 CFD · milieu bid/ask'};
+ return {...capitalQuote(await read('markets/US100')),source:'Capital.com '+config.mode+' · US100 CFD · milieu bid/ask'};
 }
 async function capitalData(interval,env=process.env,request=fetch){
  const {read,config}=await capitalReader(interval,env,request);
  const hourTask=read('prices/US100?resolution=HOUR&max=500');
- const [rows,hours,market]=await Promise.all([config.resolution==='HOUR'?hourTask:read('prices/US100?resolution='+config.resolution+'&max=500'),hourTask,read('markets?epics=US100')]);
+ const [rows,hours,market]=await Promise.all([config.resolution==='HOUR'?hourTask:read('prices/US100?resolution='+config.resolution+'&max=500'),hourTask,read('markets/US100')]);
  return {rows:capitalRows(rows),hours:capitalRows(hours),ticker:capitalQuote(market),source:'Capital.com '+config.mode+' · US100 CFD · milieu bid/ask',sessionGaps:true};
 }
 module.exports={CapitalAccessError,capitalConfig,capitalRows,capitalQuote,capitalData,capitalLatestQuote};
