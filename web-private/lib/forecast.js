@@ -19,7 +19,11 @@ function score(candles,start,end,model){
  }
  return {mae:absoluteError/(end-start),inside,count:end-start};
 }
+function validatePast(candles,now){
+ if(!Number.isFinite(now)||!Array.isArray(candles)||candles.some((c,i)=>!Number.isFinite(c.time)||!Number.isFinite(c.close)||c.close<=0||(c.time+3600)*1000>now||(i&&c.time<=candles[i-1].time)))throw new Error('Historique invalide : bougies clôturées et strictement antérieures requises');
+}
 function project(candles,price,now){
+ validatePast(candles,now);
  if(candles.length<181)throw new Error('Au moins 181 bougies horaires clôturées sont nécessaires');
  const recent=candles.slice(-181);
  if(recent.some((c,i)=>!Number.isFinite(c.close)||c.close<=0||(i&&c.time-recent[i-1].time!==3600)))throw new Error('Historique horaire incomplet');
@@ -48,6 +52,7 @@ function fitSessions(candles){
  if(!Number.isFinite(variance)||variance<=0)throw new Error('Volatilité horaire non calculable');return {drift,sigma:Math.sqrt(variance)};
 }
 function projectSessions(candles,price,now){
+ validatePast(candles,now);
  if(candles.some((c,i)=>!Number.isFinite(c.close)||c.close<=0||!Number.isFinite(c.time)||(i&&c.time<=candles[i-1].time)))throw new Error('Historique horaire invalide');
  const trials=[];
  for(let i=61;i<candles.length;i++){
