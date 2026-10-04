@@ -1,3 +1,19 @@
+# Mise à jour 0.11.0 — 4 octobre 2026
+
+Le moteur utilise désormais les CFD Capital.com pour XAU/USD (GOLD), EUR/USD (EURUSD), US100, WTI (OIL_CRUDE) et AAPL lorsque les identifiants Capital.com sont configurés et qu’aucune clé Twelve Data n’est configurée. Bitcoin conserve Coinbase Exchange. Un choix explicite cTrader reste prioritaire.
+
+Chaque fiche instrument est demandée via `/markets/{epic}` et contrôlée : epic exact, catégorie, devise USD, état négociable, délai nul et cotation horodatée de moins de deux minutes. Les graphiques TradingView conservent leurs sources distinctes : ils ne fournissent pas les données brutes du moteur. Les contrats CFD ne sont pas assimilés aux actions détenues ni au spot agrégé.
+
+L’authentification réelle et la lecture du contrat US100 ont été vérifiées le 4 octobre. Les calculs avec une cotation fraîche restent à valider à l’ouverture des marchés. Les marchés fermés sont signalés sans projection fabriquée. Le test de connexion dans Paramètres affiche désormais la raison précise renvoyée par le serveur.
+
+La prévision implémentée cible la fin de l’heure, pas 72 heures. Le calendrier reste un widget externe. Les études d’actualité sont descriptives, sans causalité démontrée ; aucun ordre n’est envoyé, aucun taux de réussite futur n’est établi.
+
+Tests : `node --test tests/*.test.js` (34 cas, dont contrats multiples, devise, freshness, session partagée et absence d’ordres). Les fixtures ne prouvent pas l’accès fournisseur réel.
+
+Les sections ci-dessous constituent l’historique des versions et peuvent décrire des limitations corrigées depuis.
+
+---
+
 # GLOBAL TRADING AI — application privée v0.10 (publiée sur Vercel)
 
 Application publiée sur https://global-trading-ai-prive.vercel.app/ avec authentification Vercel pour tous les déploiements.
