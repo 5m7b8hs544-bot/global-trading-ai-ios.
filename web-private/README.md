@@ -4,11 +4,11 @@ Le moteur utilise désormais les CFD Capital.com pour XAU/USD (GOLD), EUR/USD (E
 
 Chaque fiche instrument est demandée via `/markets/{epic}` et contrôlée : epic exact, catégorie, devise USD, état négociable, délai nul et cotation horodatée de moins de deux minutes. Les graphiques TradingView conservent leurs sources distinctes : ils ne fournissent pas les données brutes du moteur. Les contrats CFD ne sont pas assimilés aux actions détenues ni au spot agrégé.
 
-L’authentification réelle et la lecture du contrat US100 ont été vérifiées le 4 octobre. Les calculs avec une cotation fraîche restent à valider à l’ouverture des marchés. Les marchés fermés sont signalés sans projection fabriquée. Le test de connexion dans Paramètres affiche désormais la raison précise renvoyée par le serveur.
+L’authentification réelle et les cinq contrats CFD ont été vérifiés le 4 octobre. Le connecteur conserve uniquement les bougies valides postérieures à la dernière anomalie bid/ask ou OHLC ; il ne modifie aucun prix et ne comble aucun trou. Les horodatages invalides ou dupliqués, une dernière bougie invalide et un historique insuffisant restent bloquants. Le nombre de bougies écartées est affiché. Le test WTI en production conserve 327 bougies horaires après exclusion de 173 bougies anciennes ; Apple conserve 447 bougies après exclusion de 53. Les deux lectures ont été vérifiées en production le 4 octobre 2026 vers 19:17, marchés fermés. Les calculs avec une cotation fraîche restent à valider à l’ouverture des marchés. Les marchés fermés sont signalés sans projection fabriquée. Le test de connexion dans Paramètres affiche désormais la raison précise renvoyée par le serveur.
 
 La prévision implémentée cible la fin de l’heure, pas 72 heures. Le calendrier reste un widget externe. Les études d’actualité sont descriptives, sans causalité démontrée ; aucun ordre n’est envoyé, aucun taux de réussite futur n’est établi.
 
-Tests : `node --test tests/*.test.js` (34 cas, dont contrats multiples, devise, freshness, session partagée et absence d’ordres). Les fixtures ne prouvent pas l’accès fournisseur réel.
+Tests : `node --test tests/*.test.js` (35 cas, dont contrats multiples, devise, freshness, session partagée et absence d’ordres). Les fixtures ne prouvent pas l’accès fournisseur réel.
 
 Les sections ci-dessous constituent l’historique des versions et peuvent décrire des limitations corrigées depuis.
 
