@@ -19,3 +19,15 @@ test('Capital: shared session and exact read-only endpoints across markets',asyn
  assert.equal(seen.filter(([,method])=>method==='POST').length,1);assert.ok(seen.every(([url,method])=>method==='POST'?url.endsWith('/session'):/\/markets\//.test(url)));
  assert.equal(connectionConfig('BTC/USD','1h',env).provider,'Coinbase Exchange');
 });
+
+test('Capital history: valid suffix only, never bridge corrupt candles',()=>{
+ const {capitalHistory}=require('../lib/capital');
+ const candle=i=>({snapshotTimeUTC:new Date(Date.UTC(2026,0,1,i)).toISOString(),lowPrice:{bid:98,ask:100},highPrice:{bid:104,ask:106},openPrice:{bid:100,ask:102},closePrice:{bid:102,ask:104}});
+ const prices=Array.from({length:8},(_,i)=>candle(i));prices[2].lowPrice.ask=97;prices[4].closePrice.ask=null;
+ const result=capitalHistory({prices:prices.toReversed()});
+ assert.equal(result.discarded,5);assert.equal(result.invalid,2);assert.equal(result.rows.length,3);assert.equal(result.rows[0][0],Date.UTC(2026,0,1,5)/1000);
+ assert.throws(()=>capitalHistory({prices:prices.slice(0,5)}),/dernière bougie invalide/);
+ assert.throws(()=>capitalHistory({prices:[candle(1),candle(1)]}),/dupliqué/);
+ assert.throws(()=>capitalHistory({prices:[{...candle(1),snapshotTimeUTC:'bad'}]}),/Horodatage/);
+ const ohlc=candle(2);ohlc.highPrice={bid:90,ask:92};assert.throws(()=>capitalHistory({prices:[ohlc]}),/dernière bougie invalide/);
+});
