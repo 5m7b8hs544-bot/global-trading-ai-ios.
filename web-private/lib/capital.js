@@ -35,7 +35,7 @@ function capitalRows(data){
  return data.prices.map(c=>{
   if(!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z?$/.test(c.snapshotTimeUTC||''))throw new CapitalAccessError('Horodatage Capital.com absent');
   const time=Date.parse(c.snapshotTimeUTC.endsWith('Z')?c.snapshotTimeUTC:c.snapshotTimeUTC+'Z')/1000;
-  return [time,midpoint(c.lowPrice),midpoint(c.highPrice),midpoint(c.openPrice),midpoint(c.closePrice)];
+  return [time,...['lowPrice','highPrice','openPrice','closePrice'].map(field=>{try{return midpoint(c[field])}catch{const p=c[field],bid=Number(p?.bid),ask=Number(p?.ask);const reason=!p||p.bid==null||p.ask==null?'prix manquant':!Number.isFinite(bid)||!Number.isFinite(ask)?'prix non numérique':bid<=0||ask<=0?'prix nul ou négatif':'ask inférieur au bid';throw new CapitalAccessError('Historique Capital.com : '+field+' — '+reason+' ('+new Date(time*1000).toISOString()+').')}})];
  });
 }
 function capitalQuote(data,now=Date.now(),symbol='US100'){
