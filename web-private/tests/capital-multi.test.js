@@ -31,3 +31,18 @@ test('Capital history: valid suffix only, never bridge corrupt candles',()=>{
  assert.throws(()=>capitalHistory({prices:[{...candle(1),snapshotTimeUTC:'bad'}]}),/Horodatage/);
  const ohlc=candle(2);ohlc.highPrice={bid:90,ask:92};assert.throws(()=>capitalHistory({prices:[ohlc]}),/dernière bougie invalide/);
 });
+
+
+test('Capital quote: missing UTC in detail uses a complete UTC quote, never local time',async()=>{
+ const env={CAPITAL_API_KEY:'fixture-utc',CAPITAL_IDENTIFIER:'fixture',CAPITAL_API_PASSWORD:'fixture',CAPITAL_API_ENV:'live'};
+ const detail=quote('XAU/USD');delete detail.snapshot.updateTimeUTC;detail.snapshot.updateTime='2026-10-05T14:19:00';
+ const utc={...detail.snapshot,epic:'GOLD',instrumentType:'COMMODITIES',bid:200,offer:202,updateTimeUTC:new Date().toISOString()};
+ const seen=[];
+ const request=async(url)=>{seen.push(url);if(url.endsWith('/session'))return {ok:true,headers:new Headers({CST:'fixture','X-SECURITY-TOKEN':'fixture'})};return {ok:true,status:200,json:async()=>url.includes('?epics=')?{markets:[utc]}:detail}};
+ assert.equal((await capitalLatestQuote(env,request,'XAU/USD')).price,201);
+ assert.ok(seen.some(url=>url.endsWith('/markets?epics=GOLD')));
+ utc.updateTimeUTC='2000-01-01T00:00:00Z';await assert.rejects(capitalLatestQuote(env,request,'XAU/USD'),/ancien/);
+ delete utc.updateTimeUTC;await assert.rejects(capitalLatestQuote(env,request,'XAU/USD'),/Horodatage/);
+ utc.updateTimeUTC=new Date().toISOString();utc.epic='OTHER';await assert.rejects(capitalLatestQuote(env,request,'XAU/USD'),/contrat exact/);
+ utc.epic='GOLD';detail.instrument.currency='EUR';await assert.rejects(capitalLatestQuote(env,request,'XAU/USD'),/devise/);
+});
