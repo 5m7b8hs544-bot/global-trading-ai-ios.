@@ -106,7 +106,7 @@ async function timestampedQuote(market,read,symbol){
   if(!(error instanceof CapitalAccessError)||error.message!=='Horodatage Capital.com absent')throw error;
   if(market?.snapshot?.updateTimeUTC!=null)throw error;
   const c=contract(symbol);
-  return capitalQuote(await read('markets?epics='+encodeURIComponent(c.epic)),Date.now(),symbol);
+  return capitalQuote(await read('markets?searchTerm='+encodeURIComponent(c.epic)),Date.now(),symbol);
  }
 }
 async function capitalLatestQuote(env=process.env,request=fetch,symbol='US100'){
