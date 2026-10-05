@@ -2,7 +2,7 @@
 const resolutions={'15m':'MINUTE_15','1h':'HOUR','4h':'HOUR_4'};
 const {createHash}=require('node:crypto');
 const sessions=new Map();
-const contracts=Object.freeze({'US100':{epic:'US100',type:'INDICES'},'XAU/USD':{epic:'GOLD',type:'COMMODITIES'},'EUR/USD':{epic:'EURUSD',type:'CURRENCIES'},'WTI':{epic:'OIL_CRUDE',type:'COMMODITIES'},'AAPL':{epic:'AAPL',type:'SHARES'}});
+const contracts=Object.freeze({'US100':{epic:'US100',type:'INDICES'},'XAU/USD':{epic:'GOLD',type:'COMMODITIES'},'EUR/USD':{epic:'EURUSD',type:'CURRENCIES'},'WTI':{epic:'OIL_CRUDE',type:'COMMODITIES',search:'Oil'},'AAPL':{epic:'AAPL',type:'SHARES'}});
 function contract(symbol){const c=contracts[symbol];if(!c)throw new CapitalAccessError('Instrument Capital.com non pris en charge.');return c}
 class CapitalAccessError extends Error {}
 async function accessError(response,mode,stage){
@@ -106,7 +106,7 @@ async function timestampedQuote(market,read,symbol){
   if(!(error instanceof CapitalAccessError)||error.message!=='Horodatage Capital.com absent')throw error;
   if(market?.snapshot?.updateTimeUTC!=null)throw error;
   const c=contract(symbol);
-  return capitalQuote(await read('markets?searchTerm='+encodeURIComponent(c.epic)),Date.now(),symbol);
+  return capitalQuote(await read('markets?searchTerm='+encodeURIComponent(c.search||c.epic)),Date.now(),symbol);
  }
 }
 async function capitalLatestQuote(env=process.env,request=fetch,symbol='US100'){
