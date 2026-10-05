@@ -46,3 +46,20 @@ test('Capital quote: missing UTC in detail uses a complete UTC quote, never loca
  utc.updateTimeUTC=new Date().toISOString();utc.epic='OTHER';await assert.rejects(capitalLatestQuote(env,request,'XAU/USD'),/contrat exact/);
  utc.epic='GOLD';detail.instrument.currency='EUR';await assert.rejects(capitalLatestQuote(env,request,'XAU/USD'),/devise/);
 });
+
+
+test('Every Capital market: UTC search resolves exact contract and uses its complete quote',async()=>{
+ const env={CAPITAL_API_KEY:'fixture-all-utc',CAPITAL_IDENTIFIER:'fixture',CAPITAL_API_PASSWORD:'fixture',CAPITAL_API_ENV:'live'};
+ for(const [symbol,c] of Object.entries(contracts)){
+  const detail=quote(symbol);delete detail.snapshot.updateTimeUTC;detail.snapshot.updateTime='2026-10-05T14:19:00';
+  const request=async(url)=>{
+   if(url.endsWith('/session'))return {ok:true,headers:new Headers({CST:'fixture','X-SECURITY-TOKEN':'fixture'})};
+   if(url.includes('?searchTerm=')){
+    assert.equal(new URL(url).searchParams.get('searchTerm'),symbol==='WTI'?'Oil':c.epic);
+    return {ok:true,status:200,json:async()=>({markets:[{epic:'OTHER',instrumentType:c.type,bid:999,offer:1000},{...detail.snapshot,epic:c.epic,instrumentType:c.type,bid:200,offer:202,updateTimeUTC:new Date().toISOString()}]})};
+   }
+   assert.ok(url.endsWith('/markets/'+c.epic));return {ok:true,status:200,json:async()=>detail};
+  };
+  assert.equal((await capitalLatestQuote(env,request,symbol)).price,201);
+ }
+});
