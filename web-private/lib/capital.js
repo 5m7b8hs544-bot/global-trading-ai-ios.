@@ -98,10 +98,21 @@ async function capitalReader(interval,env,request){
  }
  return {read,config};
 }
+// The single-market snapshot documents updateTime, not updateTimeUTC.
+// Fetch a complete timestamped quote instead of guessing a timezone or pairing
+// a fresh timestamp with prices from another response.
+async function timestampedQuote(market,read,symbol){
+ try{return capitalQuote(market,Date.now(),symbol)}catch(error){
+  if(!(error instanceof CapitalAccessError)||error.message!=='Horodatage Capital.com absent')throw error;
+  if(market?.snapshot?.updateTimeUTC!=null)throw error;
+  const c=contract(symbol);
+  return capitalQuote(await read('markets?epics='+encodeURIComponent(c.epic)),Date.now(),symbol);
+ }
+}
 async function capitalLatestQuote(env=process.env,request=fetch,symbol='US100'){
  const c=contract(symbol);
  const {read,config}=await capitalReader('1h',env,request);
- return {...capitalQuote(await read('markets/'+c.epic),Date.now(),symbol),source:'Capital.com '+config.mode+' · '+c.epic+' CFD · milieu bid/ask'};
+ return {...await timestampedQuote(await read('markets/'+c.epic),read,symbol),source:'Capital.com '+config.mode+' · '+c.epic+' CFD · milieu bid/ask'};
 }
 async function capitalData(interval,env=process.env,request=fetch,symbol='US100'){
  const c=contract(symbol);
@@ -110,7 +121,7 @@ async function capitalData(interval,env=process.env,request=fetch,symbol='US100'
  const [rows,hours,market]=await Promise.all([config.resolution==='HOUR'?hourTask:read('prices/'+c.epic+'?resolution='+config.resolution+'&max=500'),hourTask,read('markets/'+c.epic)]);
  const selected=capitalHistory(rows),hourly=rows===hours?selected:capitalHistory(hours);
  const quality='Historique validé : '+hourly.rows.length+' bougies horaires'+(hourly.discarded?' ; '+hourly.discarded+' bougies écartées jusqu’à la dernière anomalie':'')+'.';
- let ticker;try{ticker=capitalQuote(market,Date.now(),symbol)}catch(error){if(error instanceof CapitalAccessError)throw new CapitalAccessError(error.message+' '+quality);throw error}
+ let ticker;try{ticker=await timestampedQuote(market,read,symbol)}catch(error){if(error instanceof CapitalAccessError)throw new CapitalAccessError(error.message+' '+quality);throw error}
  return {rows:selected.rows,hours:hourly.rows,ticker,source:'Capital.com '+config.mode+' · '+c.epic+' CFD · milieu bid/ask'+(selected.discarded||hourly.discarded?' · historique tronqué après anomalie ('+selected.discarded+' / '+hourly.discarded+' bougies écartées)':''),sessionGaps:true};
 }
 module.exports={contracts,CapitalAccessError,capitalConfig,capitalRows,capitalHistory,capitalQuote,capitalData,capitalLatestQuote};
